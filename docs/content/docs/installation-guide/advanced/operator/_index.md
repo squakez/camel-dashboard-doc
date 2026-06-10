@@ -37,7 +37,7 @@ $ helm repo add camel-dashboard https://camel-tooling.github.io/camel-dashboard/
 $ helm repo list
 
 NAME    URL
-camel-dashboard	https://camel-tooling.github.io/camel-dashboard/charts/
+camel-tooling	https://camel-tooling.github.io/camel-dashboard/charts/
 ```
 
 * Install the *operator* using the helm [install](https://helm.sh/docs/helm/helm_install/) command:
@@ -59,10 +59,10 @@ camel-monitor-operator-7c6bcf5576-fwn7s   1/1     Running   0          4m18s
 
 ```bash
 $ kubectl create ns camel-monitor
-$ kubectl apply -k github.com/camel-tooling/camel-monitor-operator/install/overlays/kubernetes/descoped?ref=v0.2.1 --server-side
+$ kubectl apply -k github.com/camel-tooling/camel-monitor-operator/install/overlays/kubernetes/descoped?ref=v0.2.0 --server-side
 ```
 
-You can specify as ref parameter the version you’re willing to install (ie, v0.2.1). The command above will install a descoped (global) operator in the `camel-monitor` namespace. This is the suggested configuration in order to manage `CamelMonitors` in all namespaces.
+You can specify as ref parameter the version you’re willing to install (ie, v0.2.0). The command above will install a descoped (global) operator in the `camel-monitor` namespace. This is the suggested configuration in order to manage `CamelMonitors` in all namespaces.
 
 ### OLM
 
@@ -75,6 +75,21 @@ $ kubectl create -f https://operatorhub.io/install/camel-monitor-operator.yaml
 You can edit the Subscription custom resource, setting the channel you want to use. We provide an installation channel for `latest` and each major version we’re releasing (ie, `stable-v0`). This will simplify the upgrade process if you choose to perform an automatic upgrade.
 
 > NOTE: some Kubernetes clusters such as Openshift may let you to perform the same operation from a GUI as well. Refer to the cluster instruction to learn how to perform such action from user interface.
+
+### Installation topologies
+
+When you decide to install the operator, you can decide to install the following topology:
+
+* Global operator: a single global operator watching all namespaces.
+* Own namespace operator: a namespaces operator watching its own namespace only.
+* Single namespace operator: an operator installed in a namespace and watching another namespace.
+* Multi namespace operator: an operator installed in a namespace and watching multiple namespaces.
+
+The namespace(s) to watch is configured via `WATCH_NAMESPACE` variable in the operator `Deployment` resource. You can provide an empty value (watch all namespaces), a single value (watch either the own namespace or any other namespace) or a comma separated value (watching as many namespaces as provided).
+
+It's important to notice that when running the single or multiple namespace operator, you will need to provide the RBACs which are expected by the operator to run properly. For such a configuration you can take as a reference the `Kustomize` examples available in `/install/overlays/single-namespace/` and `/install/overlays/multi-namespace/`. The last topology is probably the most secure as it will avoid the operator to access to any resource outside those namespaces for which you've provided the proper security rules.
+
+> NOTE: OLM bundle only allows own and global installation mode.
 
 ## Configuration
 
@@ -147,53 +162,3 @@ You can setup the environment variables `OBSERVABILITY_PORT` with the number of 
 #### Application level
 
 You can add an annotation to the `Deployment` resource, `camel.apache.org/observability-services-port` with the value expected for that specific application only.
-
-### Include Prometheus PodMonitor
-
-The presence of `camel-observability-services` leverages Micrometer Prometheus technology. The exposure of the metrics endpoint enables the possibility for the operator to include the custom resource expected by Prometheus operator automatically. The operator is able to detect the presence of such capability on the cluster, and, by default, include a `PodMonitor` associated with the Camel application monitored by the dashboard.
-
-Such a `PodMonitor` can be eventually used by the final user for more [advanced monitoring activities](https://prometheus-operator.dev/docs/developer/getting-started/#using-podmonitors).
-
-#### Operator level
-
-You can setup the environment variable `CREATE_PROMETHEUS_POD_MONITOR` (by default it is enabled). It must be `true` to enable the creation of the Prometheus custom resource. Remove the variable or set to any other value to disable the feature.
-
-You should also set the environment variable `PROMETHEUS_LABEL` in order to configure all the `PodMonitor` with the proper label selector expected by your existing `Prometheus` instance. The environment variable expect a single label formatted as `key=value`. By default, the operator will configure a label as `camel.apache.org/prometheus=camel-dashboard-operator`. If you therefore want to create a dedicated instance to monitor all Camel Dashboard applications, you can configure your `Prometheus` to select such a default label.
-
-#### Application level
-
-Not available at the moment. Feel free to open a change request to enable this in future releases.
-
-### Include Grafana Dashboard
-
-The operator is also in charge to create a `GrafanaDashboard` custom resource equipped with a series of opinionated metrics for each Camel application it discovers. The result is an automatic dashboard that can be browsed in [Grafana](https://grafana.com/) monitoring tool (which has to be available in the cluster).
-
-> NOTE: this feature is experimental.
-
-When the operator detects the exposure of the Prometheus metrics endpoint and the presence of an existing Grafana operator (via the availability of `GrafanaDashboard` custom resource), it will create a new dashboard with the same name of the application. This will be picked by the `Grafana` instance and exposed in its interface.
-
-#### Operator level
-
-You can setup the environment variable `CREATE_GRAFANA_MONITOR` (by default it is enabled). It must be `true` to enable the creation of the `GrafanaDashboard` custom resource. Remove the variable or set to any other value to disable the feature. Every dashboard created needs to setup the datasource to use: we control this configuration via the environment variable `GRAFANA_DS` which defaults to the value `prometheus`. If your Prometheus datasource has a different name, you'll need to change the variable accordingly.
-
-You should also set the environment variable `GRAFANA_LABEL` in order to configure all the dashboards created with the proper label selector expected by your existing `Grafana` instance. The environment variable expect a single label formatted as `key=value`. By default, the operator will configure a label as `camel.apache.org/grafana=camel-dashboard-operator`. If you therefore want to create a dedicated instance to monitor all Camel Dashboard applications, you can configure your `Grafana` to select such a default label.
-
-#### Application level
-
-Not available at the moment. Feel free to open a change request to enable this in future releases.
-
-### Include Alert PrometheusRule
-
-The operator is also in charge to create a single `PrometheusRule` custom resource equipped with a series of opinionated Camel alerts that could be used to integrate in any SRE system via [Prometheus Alert Manager](https://prometheus.io/docs/alerting/latest/alertmanager/).
-
-When the operator detects the existence of the Prometheus custom resources, it will create an alert named `camel-dashboard-alerts` in the same namespace where the operator is installed (the process is the same regardless if the operator is global or namespace scoped).
-
-#### Operator level
-
-You can setup the environment variable `CREATE_PROMETHEUS_RULE` (by default it is enabled). It must be `true` to enable the creation of the `PrometheusRule` custom resource. Remove the variable or set to any other value to disable the feature.
-
-You should also set the environment variable `PROMETHEUS_RULE_LABEL` in order to configure the alert rules created with the proper label selector expected by your existing `Prometheus` instance (i.e., via `.spec.ruleSelector.matchLabels`). The environment variable expect a single label formatted as `key=value`. By default, the operator will configure a label as `camel.apache.org/alerts=camel-dashboard-operator` if none is specified.
-
-#### Application level
-
-Not available at the moment. Feel free to open a change request to enable this in future releases.
